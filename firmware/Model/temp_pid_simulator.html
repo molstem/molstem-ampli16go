@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Temperature PID Simulator - TEC1-12706</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 30px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .control-group {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .control-group h3 {
+            color: #444;
+            margin-bottom: 15px;
+            font-size: 16px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+
+        .input-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .input-row label {
+            color: #555;
+            font-size: 14px;
+            flex: 1;
+        }
+
+        .input-row input {
+            width: 100px;
+            padding: 6px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .input-row input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-export {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-export:hover {
+            background: #218838;
+        }
+
+        .plot-container {
+            margin-bottom: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .status {
+            text-align: center;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            display: none;
+        }
+
+        .status.running {
+            display: block;
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .status.complete {
+            display: block;
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Temperature PID Simulator</h1>
+        <div class="subtitle">TEC1-12706 Peltier Module with Aluminum Load</div>
+
+        <div class="controls">
+            <div class="control-group">
+                <h3>PID Parameters</h3>
+                <div class="input-row">
+                    <label>Kp (Proportional Gain):</label>
+                    <input type="number" id="kp" value="3.0" step="0.1">
+                </div>
+                <div class="input-row">
+                    <label>Ti (Integral Time, s):</label>
+                    <input type="number" id="ti" value="2.0" step="0.1">
+                </div>
+                <div class="input-row">
+                    <label>Td (Derivative Time, s):</label>
+                    <input type="number" id="td" value="1.0" step="0.1">
+                </div>
+                <div class="input-row">
+                    <label>Tf (Filter Time, s):</label>
+                    <input type="number" id="tf" value="0.1" step="0.01">
+                </div>
+                <div class="input-row">
+                    <label>Kb (Anti-windup Gain):</label>
+                    <input type="number" id="kb" value="0.8" step="0.1">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Temperature Setpoints</h3>
+                <div class="input-row">
+                    <label>Start Temperature (°C):</label>
+                    <input type="number" id="startTemp" value="25" step="1">
+                </div>
+                <div class="input-row">
+                    <label>Target Temperature (°C):</label>
+                    <input type="number" id="targetTemp" value="95" step="1">
+                </div>
+                <div class="input-row">
+                    <label>Ambient Temperature (°C):</label>
+                    <input type="number" id="ambientTemp" value="25" step="1">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Thermal Model</h3>
+                <div class="input-row">
+                    <label>Aluminum Mass (kg):</label>
+                    <input type="number" id="mass" value="0.05" step="0.01">
+                </div>
+                <div class="input-row">
+                    <label>Heat Capacity (J/kg·K):</label>
+                    <input type="number" id="cp" value="900" step="10">
+                </div>
+                <div class="input-row">
+                    <label>k_peltier (W/A):</label>
+                    <input type="number" id="kPeltier" value="35" step="1">
+                </div>
+                <div class="input-row">
+                    <label>Heat Transfer Coeff (W/K):</label>
+                    <input type="number" id="heatTransfer" value="1.2" step="0.1">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Current Limits</h3>
+                <div class="input-row">
+                    <label>Max Current (A):</label>
+                    <input type="number" id="maxCurrent" value="4" step="0.1">
+                </div>
+                <div class="input-row">
+                    <label>Min Current (A):</label>
+                    <input type="number" id="minCurrent" value="-4" step="0.1">
+                </div>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button class="btn-primary" onclick="runSimulation()">Run Simulation</button>
+            <button class="btn-secondary" onclick="resetDefaults()">Reset to Defaults</button>
+            <button class="btn-export" onclick="exportCSV()">Export CSV</button>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div class="plot-container" id="tempPlot"></div>
+        <div class="plot-container" id="currentPlot"></div>
+        <div class="plot-container" id="errorPlot"></div>
+    </div>
+
+    <script>
+        // Global simulation results
+        let simulationData = null;
+
+        // PID Controller Class
+        class TempPIDController {
+            constructor(coef) {
+                this.coef = coef;
+                this.data = {
+                    Te_prev: 0.0,
+                    Te_d_prev: 0.0,
+                    Te_i: 0.0,
+                    Ic_prev: 0.0
+                };
+            }
+
+            control(targetTemp, measuredTemp) {
+                const Te = targetTemp - measuredTemp;
+
+                // Adaptive gains based on error magnitude
+                let adaptiveKp = this.coef.Kp;
+                const absError = Math.abs(Te);
+                if (absError < 2.0) {
+                    adaptiveKp = this.coef.Kp * 0.3;
+                } else if (absError < 5.0) {
+                    adaptiveKp = this.coef.Kp * 0.6;
+                }
+
+                const dt = this.coef.dt;
+
+                // Calculate derivative term with filter (lagged derivative)
+                const alpha = this.coef.Tf / (this.coef.Tf + dt);
+                const Te_d = alpha * this.data.Te_d_prev +
+                            (1.0 - alpha) * this.coef.Td * (Te - this.data.Te_prev) / dt;
+
+                // Update integral term with Tustin's method
+                this.data.Te_i += 0.5 * (Te + this.data.Te_prev) * dt / this.coef.Ti;
+
+                // Limit integral to prevent windup
+                const max_integral = this.coef.ic_max / adaptiveKp;
+                if (this.data.Te_i > max_integral) this.data.Te_i = max_integral;
+                if (this.data.Te_i < -max_integral) this.data.Te_i = -max_integral;
+
+                // Calculate PID output
+                const Ipid = adaptiveKp * (Te + this.data.Te_i + Te_d);
+
+                // Apply output limiting
+                let Ic = Math.max(Math.min(Ipid, this.coef.ic_max), this.coef.ic_min);
+
+                // Anti-windup: back-calculate to prevent integral windup
+                if (Ipid !== Ic) {
+                    this.data.Te_i += this.coef.Kb * (Ic - Ipid) * dt / this.coef.Ti;
+                }
+
+                // Store values for next iteration
+                this.data.Te_prev = Te;
+                this.data.Te_d_prev = Te_d;
+                this.data.Ic_prev = Ic;
+
+                return {
+                    current: Ic,
+                    error: Te,
+                    pTerm: adaptiveKp * Te,
+                    iTerm: adaptiveKp * this.data.Te_i,
+                    dTerm: adaptiveKp * Te_d
+                };
+            }
+        }
+
+        // Thermal Model Class
+        class ThermalModel {
+            constructor(params) {
+                this.mass = params.mass;
+                this.cp = params.cp;
+                this.kPeltier = params.kPeltier;
+                this.heatTransfer = params.heatTransfer;
+                this.ambientTemp = params.ambientTemp;
+                this.temperature = params.startTemp;
+            }
+
+            update(current, dt) {
+                // Heat generated by Peltier (positive current = heating)
+                const Q_peltier = current * this.kPeltier;
+
+                // Heat loss to ambient
+                const Q_loss = this.heatTransfer * (this.temperature - this.ambientTemp);
+
+                // Net heat
+                const Q_net = Q_peltier - Q_loss;
+
+                // Temperature change: dT/dt = Q / (m * cp)
+                const dT = Q_net * dt / (this.mass * this.cp);
+
+                this.temperature += dT;
+
+                return this.temperature;
+            }
+        }
+
+        // Main simulation function
+        function runSimulation() {
+            const status = document.getElementById('status');
+            status.className = 'status running';
+            status.textContent = 'Running simulation...';
+
+            // Read parameters from UI
+            const params = {
+                kp: parseFloat(document.getElementById('kp').value),
+                ti: parseFloat(document.getElementById('ti').value),
+                td: parseFloat(document.getElementById('td').value),
+                tf: parseFloat(document.getElementById('tf').value),
+                kb: parseFloat(document.getElementById('kb').value),
+                startTemp: parseFloat(document.getElementById('startTemp').value),
+                targetTemp: parseFloat(document.getElementById('targetTemp').value),
+                ambientTemp: parseFloat(document.getElementById('ambientTemp').value),
+                mass: parseFloat(document.getElementById('mass').value),
+                cp: parseFloat(document.getElementById('cp').value),
+                kPeltier: parseFloat(document.getElementById('kPeltier').value),
+                heatTransfer: parseFloat(document.getElementById('heatTransfer').value),
+                maxCurrent: parseFloat(document.getElementById('maxCurrent').value),
+                minCurrent: parseFloat(document.getElementById('minCurrent').value)
+            };
+
+            // Simulation parameters
+            const dt = 0.001; // 1ms timestep
+            const duration = 100; // 100 seconds
+            const steps = Math.floor(duration / dt);
+
+            // Initialize PID controller
+            const pidCoef = {
+                Kp: params.kp,
+                Ti: params.ti,
+                Td: params.td,
+                Tf: params.tf,
+                Kb: params.kb,
+                dt: dt,
+                ic_min: params.minCurrent,
+                ic_max: params.maxCurrent
+            };
+            const pid = new TempPIDController(pidCoef);
+
+            // Initialize thermal model
+            const thermal = new ThermalModel({
+                mass: params.mass,
+                cp: params.cp,
+                kPeltier: params.kPeltier,
+                heatTransfer: params.heatTransfer,
+                ambientTemp: params.ambientTemp,
+                startTemp: params.startTemp
+            });
+
+            // Data arrays
+            const time = [];
+            const temperature = [];
+            const current = [];
+            const error = [];
+            const pTerm = [];
+            const iTerm = [];
+            const dTerm = [];
+
+            // Exponential filter state
+            let filteredTemp = params.startTemp;
+
+            // Run simulation
+            for (let i = 0; i < steps; i++) {
+                const t = i * dt;
+
+                // Add sensor noise to temperature reading (±0.2°C, gaussian-like distribution)
+                const noise = (Math.random() - 0.5) * 0.4 + (Math.random() - 0.5) * 0.4;
+                const noisyTemp = thermal.temperature + noise;
+
+                // Apply exponential filter: filtered = old * 0.99 + new * 0.01
+                filteredTemp = filteredTemp * 0.99 + noisyTemp * 0.01;
+
+                // PID control with filtered measurement
+                const pidOutput = pid.control(params.targetTemp, filteredTemp);
+
+                // Update thermal model (actual temperature, not noisy)
+                const newTemp = thermal.update(pidOutput.current, dt);
+
+                // Store data (downsample for plotting - every 10th point)
+                if (i % 10 === 0) {
+                    time.push(t);
+                    temperature.push(newTemp);
+                    current.push(pidOutput.current);
+                    error.push(pidOutput.error);
+                    pTerm.push(pidOutput.pTerm);
+                    iTerm.push(pidOutput.iTerm);
+                    dTerm.push(pidOutput.dTerm);
+                }
+            }
+
+            // Store results globally
+            simulationData = {
+                time: time,
+                temperature: temperature,
+                current: current,
+                error: error,
+                pTerm: pTerm,
+                iTerm: iTerm,
+                dTerm: dTerm,
+                targetTemp: params.targetTemp
+            };
+
+            // Plot results
+            plotResults(simulationData);
+
+            status.className = 'status complete';
+            status.textContent = `Simulation complete! ${steps} iterations (${duration}s simulated)`;
+        }
+
+        function plotResults(data) {
+            // Temperature plot
+            const tempTrace = {
+                x: data.time,
+                y: data.temperature,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Temperature',
+                line: {color: '#667eea', width: 2}
+            };
+
+            const targetTrace = {
+                x: data.time,
+                y: new Array(data.time.length).fill(data.targetTemp),
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Target',
+                line: {color: '#e74c3c', width: 2, dash: 'dash'}
+            };
+
+            const tempLayout = {
+                title: 'Temperature Response',
+                xaxis: {title: 'Time (s)'},
+                yaxis: {title: 'Temperature (°C)'},
+                showlegend: true,
+                height: 400
+            };
+
+            Plotly.newPlot('tempPlot', [tempTrace, targetTrace], tempLayout);
+
+            // Current plot
+            const currentTrace = {
+                x: data.time,
+                y: data.current,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Current Output',
+                line: {color: '#2ecc71', width: 2}
+            };
+
+            const currentLayout = {
+                title: 'Current Output',
+                xaxis: {title: 'Time (s)'},
+                yaxis: {title: 'Current (A)'},
+                height: 300
+            };
+
+            Plotly.newPlot('currentPlot', [currentTrace], currentLayout);
+
+            // Error plot
+            const errorTrace = {
+                x: data.time,
+                y: data.error,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Error',
+                line: {color: '#e67e22', width: 2}
+            };
+
+            const errorLayout = {
+                title: 'Temperature Error',
+                xaxis: {title: 'Time (s)'},
+                yaxis: {title: 'Error (°C)'},
+                height: 300
+            };
+
+            Plotly.newPlot('errorPlot', [errorTrace], errorLayout);
+        }
+
+        function resetDefaults() {
+            document.getElementById('kp').value = 3.0;
+            document.getElementById('ti').value = 2.0;
+            document.getElementById('td').value = 1.0;
+            document.getElementById('tf').value = 0.1;
+            document.getElementById('kb').value = 0.8;
+            document.getElementById('startTemp').value = 25;
+            document.getElementById('targetTemp').value = 95;
+            document.getElementById('ambientTemp').value = 25;
+            document.getElementById('mass').value = 0.05;
+            document.getElementById('cp').value = 900;
+            document.getElementById('kPeltier').value = 35;
+            document.getElementById('heatTransfer').value = 1.2;
+            document.getElementById('maxCurrent').value = 4;
+            document.getElementById('minCurrent').value = -4;
+        }
+
+        function exportCSV() {
+            if (!simulationData) {
+                alert('Please run a simulation first!');
+                return;
+            }
+
+            let csv = 'Time (s),Temperature (°C),Current (A),Error (°C),P Term,I Term,D Term\n';
+
+            for (let i = 0; i < simulationData.time.length; i++) {
+                csv += `${simulationData.time[i].toFixed(3)},`;
+                csv += `${simulationData.temperature[i].toFixed(4)},`;
+                csv += `${simulationData.current[i].toFixed(4)},`;
+                csv += `${simulationData.error[i].toFixed(4)},`;
+                csv += `${simulationData.pTerm[i].toFixed(4)},`;
+                csv += `${simulationData.iTerm[i].toFixed(4)},`;
+                csv += `${simulationData.dTerm[i].toFixed(4)}\n`;
+            }
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'pid_simulation.csv';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Auto-run simulation on parameter change
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputs = document.querySelectorAll('input[type="number"]');
+            inputs.forEach(input => {
+                input.addEventListener('change', runSimulation);
+                input.addEventListener('input', debounce(runSimulation, 500));
+            });
+
+            // Run initial simulation
+            runSimulation();
+        });
+
+        // Debounce function to avoid too many updates while typing
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+    </script>
+</body>
+</html>

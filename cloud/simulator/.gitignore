@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Certificates (private keys!)
+certs/
+*.key
+*.pem
+
+# Environment
+.env
+.env.local

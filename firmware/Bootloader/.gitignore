@@ -1,0 +1,8 @@
+Binary/
+.settings/
+*.html
+*.launch
+Debug/
+Release/
+build/
+Core/git-version.h

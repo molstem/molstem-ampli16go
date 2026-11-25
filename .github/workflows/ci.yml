@@ -1,0 +1,196 @@
+name: molstem thermocycler CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PRODUCT: molstem-thermocycler
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    name: Build firmware + web app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          # esptool-legacy-flasher-stub is a private submodule and is not needed for the build:
+          # it only regenerates the committed firmware/Bootloader/molstem/v2/esp32c5_stub.hpp.
+          submodules: false
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install asn1
+
+      # Shared SCPI parser: host unit test + drift check of the per-project copies
+      - name: Test shared SCPI parser
+        run: |
+          python3 firmware/tools/sync_scpi.py --check
+          python3 firmware/tools/test_scpi.py
+
+      - name: Set GIT_DESCRIBE variable
+        id: git-describe
+        run: |
+          git fetch --tags --force
+          GIT_DESCRIBE=$(git describe --tags --always --dirty 2>/dev/null || echo "unknown")
+          echo "version=${GIT_DESCRIBE}" >> $GITHUB_OUTPUT
+          echo "Git describe: ${GIT_DESCRIBE}"
+
+      # ------------------------------------------------------------------
+      # Firmware (STM32 App + Bootloader, ESP32-C5 Wi-Fi)
+      # ------------------------------------------------------------------
+      - name: Build Bootloader project
+        uses: xanderhendriks/action-build-stm32cubeide@v15.0
+        with:
+          project-path: 'firmware/Bootloader'
+          project-target: 'Bootloader/Release'
+
+      - name: Build App project
+        uses: xanderhendriks/action-build-stm32cubeide@v15.0
+        with:
+          project-path: 'firmware/App'
+          project-target: 'molstem-thermocycler/Release'
+
+      # The STM32CubeIDE images are several GB; drop them (and anything else Docker cached)
+      # so the ESP-IDF image pull does not run the runner out of disk.
+      - name: Free disk space (remove Docker images from the STM32 builds)
+        run: |
+          df -h / | tail -1
+          docker system prune --all --force --volumes
+          df -h / | tail -1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            webui/package-lock.json
+            cloud/shared/package-lock.json
+            cloud/worker/package-lock.json
+            firmware/Captive/package-lock.json
+
+      - name: Build Captive Portal (embedded)
+        run: |
+          cd firmware/Captive
+          npm ci
+          npm run build:embed
+          ls -lh dist-embed/
+
+      - name: Install webui dependencies
+        run: |
+          cd webui
+          npm ci
+
+      - name: Build webui (embedded)
+        run: |
+          cd webui
+          npm run build:embed
+          ls -lh dist-embed/
+
+      - name: Build webui (app.molstem.com)
+        run: |
+          cd webui
+          npm run build
+
+      # Both JS builds are done (dist/ and dist-embed/ are kept); reclaim their node_modules
+      # before the ESP-IDF image is pulled.
+      - name: Remove node_modules from the JS builds
+        run: |
+          rm -rf webui/node_modules firmware/Captive/node_modules
+          df -h / | tail -1
+
+      - name: Build ESP32-C5 Wifi project
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.2
+          target: esp32c5
+          path: firmware/Wifi
+          command: idf.py build && idf.py merge-bin
+
+      - name: Prepare firmware artifacts
+        run: |
+          V=${{ steps.git-describe.outputs.version }}
+          mkdir -p firmware-artifacts
+          cp firmware/App/Release/molstem-thermocycler.elf firmware-artifacts/${PRODUCT}-${V}.elf
+          cp firmware/App/Release/molstem-thermocycler.bin firmware-artifacts/${PRODUCT}-${V}.bin
+          cp firmware/App/Release/molstem-thermocycler.hex firmware-artifacts/${PRODUCT}-${V}.hex
+
+          cp firmware/Bootloader/Release/Bootloader.elf firmware-artifacts/${PRODUCT}-bootloader-${V}.elf
+          cp firmware/Bootloader/Release/Bootloader.bin firmware-artifacts/${PRODUCT}-bootloader-${V}.bin
+          cp firmware/Bootloader/Release/Bootloader.hex firmware-artifacts/${PRODUCT}-bootloader-${V}.hex
+
+
+          ls -lh firmware-artifacts/
+
+      - name: Upload Firmware Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PRODUCT }}-firmware-${{ steps.git-describe.outputs.version }}
+          path: firmware-artifacts/*
+
+      # ------------------------------------------------------------------
+      # Desktop (Electron) builds — DISCONTINUED.
+      # Kept for reference; re-enable by uncommenting if desktop apps come back.
+      # ------------------------------------------------------------------
+      # - name: Update package.json version for Electron build
+      #   run: |
+      #     cd webui
+      #     npm version ${{ steps.git-describe.outputs.version }} --no-git-tag-version --allow-same-version
+      #
+      # - name: Install Wine for Windows builds
+      #   run: |
+      #     sudo dpkg --add-architecture i386
+      #     sudo mkdir -pm755 /etc/apt/keyrings
+      #     sudo wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key
+      #     sudo wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/jammy/winehq-jammy.sources
+      #     sudo apt-get update
+      #     sudo apt-get install -y --install-recommends winehq-stable
+      #
+      # - name: Build Electron apps for all platforms
+      #   run: |
+      #     cd webui
+      #     npm run electron:build -- --win --mac --linux
+      #     ls -lh electron-dist/
+      #
+      # - name: Upload Windows Desktop App
+      #   if: github.ref == 'refs/heads/main'
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: ${{ env.PRODUCT }}-${{ steps.git-describe.outputs.version }}-windows
+      #     path: webui/electron-dist/win-unpacked
+      #
+      # - name: Upload macOS Desktop App
+      #   if: github.ref == 'refs/heads/main'
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: ${{ env.PRODUCT }}-${{ steps.git-describe.outputs.version }}-macos
+      #     path: webui/electron-dist/mac/
+      #
+      # - name: Upload Linux Desktop App
+      #   if: github.ref == 'refs/heads/main'
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: ${{ env.PRODUCT }}-${{ steps.git-describe.outputs.version }}-linux
+      #     path: webui/electron-dist/linux-unpacked
+
+      - name: Upload web app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PRODUCT }}-webapp-${{ steps.git-describe.outputs.version }}
+          path: webui/dist
+          retention-days: 7

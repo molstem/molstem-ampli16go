@@ -1,0 +1,29 @@
+{
+  "name": "@molstem/device-simulator",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "molstem thermocycler device simulator for cloud backend testing",
+  "main": "dist/index.js",
+  "bin": {
+    "molstem-sim": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@molstem/cloud-shared": "file:../shared",
+    "commander": "^12.1.0",
+    "node-fetch": "^3.3.2",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.15.0",
+    "typescript": "^5.4.5"
+  }
+}

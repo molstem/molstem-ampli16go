@@ -1,0 +1,3 @@
+[submodule "esptool-legacy-flasher-stub"]
+	path = esptool-legacy-flasher-stub
+	url = ../molstem-esptool-legacy-flasher-stub.git

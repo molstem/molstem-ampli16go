@@ -1,0 +1,24 @@
+{
+  "name": "@molstem/admin-worker",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "molstem admin dashboard worker",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "build": "npm run build:frontend",
+    "deploy": "npm run build && wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@molstem/cloud-shared": "file:../shared",
+    "jose": "^5.2.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240620.0",
+    "typescript": "^5.4.5",
+    "wrangler": "^3.60.0"
+  }
+}

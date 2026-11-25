@@ -1,0 +1,9 @@
+git-version.h
+.DS_Store
+*.fwu
+.settings/
+nul
+.claude/
+reference/
+# Cloudflare deployment config (account, KV, D1 and Access identifiers) is kept out of the public repo
+wrangler.toml

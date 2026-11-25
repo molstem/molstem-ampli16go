@@ -1,0 +1,1 @@
+void rotary_init();
